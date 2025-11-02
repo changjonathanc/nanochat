@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NanoChat Dataset Viewer</title>
+    <link rel="icon" type="image/svg+xml" href="/logo.svg">
+    <style>
+        :root {
+            color-scheme: light;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: ui-sans-serif, -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
+            color: #111827;
+            background: #f8fafc;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: #ffffff;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1.5rem;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .brand img {
+            width: 32px;
+            height: 32px;
+        }
+
+        .brand h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .stage-list, .dataset-list {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .stage-button, .dataset-button, .shuffle-button {
+            border: 1px solid #cbd5f5;
+            border-radius: 9999px;
+            padding: 0.4rem 0.9rem;
+            background: #ffffff;
+            color: #1e293b;
+            cursor: pointer;
+            font-size: 0.95rem;
+            transition: all 0.2s ease;
+        }
+
+        .stage-button:hover, .dataset-button:hover, .shuffle-button:hover {
+            background: #e0e7ff;
+            border-color: #a5b4fc;
+        }
+
+        .stage-button.active, .dataset-button.active {
+            background: #4338ca;
+            color: #ffffff;
+            border-color: #4338ca;
+        }
+
+        .shuffle-button {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-weight: 500;
+        }
+
+        main {
+            flex: 1;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .panel {
+            background: #ffffff;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+        }
+
+        .panel h2 {
+            margin: 0 0 1rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .meta-item {
+            border: 1px solid #e2e8f0;
+            border-radius: 0.75rem;
+            padding: 0.75rem 0.9rem;
+            background: #f8fafc;
+        }
+
+        .meta-label {
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+            color: #64748b;
+            margin-bottom: 0.25rem;
+        }
+
+        .meta-value {
+            font-size: 0.95rem;
+            color: #0f172a;
+            word-break: break-word;
+        }
+
+        .example-area {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .message {
+            border-radius: 0.9rem;
+            padding: 1rem;
+            border: 1px solid #e2e8f0;
+            background: #f1f5f9;
+        }
+
+        .message.assistant {
+            background: #eef2ff;
+            border-color: #c7d2fe;
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #334155;
+        }
+
+        .message-content {
+            white-space: pre-wrap;
+            line-height: 1.6;
+            color: #111827;
+        }
+
+        .code-block {
+            background: #1e293b;
+            color: #e2e8f0;
+            border-radius: 0.75rem;
+            padding: 0.75rem 1rem;
+            margin: 0.5rem 0;
+            font-family: "JetBrains Mono", "Fira Code", "SFMono-Regular", Menlo, monospace;
+            font-size: 0.9rem;
+            overflow-x: auto;
+        }
+
+        pre.raw-text {
+            background: #0f172a;
+            color: #f8fafc;
+            border-radius: 0.9rem;
+            padding: 1.25rem;
+            font-size: 0.92rem;
+            line-height: 1.6;
+            overflow-x: auto;
+            margin: 0;
+        }
+
+        .empty-state {
+            border: 2px dashed #cbd5f5;
+            border-radius: 1rem;
+            padding: 2rem;
+            text-align: center;
+            color: #475569;
+        }
+
+        .error-banner {
+            border: 1px solid #fca5a5;
+            background: #fee2e2;
+            color: #991b1b;
+            border-radius: 0.75rem;
+            padding: 0.75rem 1rem;
+        }
+
+        footer {
+            padding: 1.5rem 2rem;
+            color: #64748b;
+            font-size: 0.85rem;
+        }
+
+        @media (max-width: 768px) {
+            header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            main {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="brand">
+            <img src="/logo.svg" alt="NanoChat logo">
+            <h1>Dataset Viewer</h1>
+        </div>
+        <div class="stage-list" id="stage-list"></div>
+    </header>
+
+    <main>
+        <section class="panel">
+            <h2>Stage Details</h2>
+            <div class="meta-grid" id="stage-meta"></div>
+        </section>
+
+        <section class="panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                <h2>Datasets</h2>
+                <button class="shuffle-button" id="random-button" type="button">&#x21bb; Surprise me</button>
+            </div>
+            <div class="dataset-list" id="dataset-list"></div>
+        </section>
+
+        <section class="panel">
+            <h2>Random Example</h2>
+            <div id="error-banner" class="error-banner" style="display:none;"></div>
+            <div id="example-area" class="example-area"></div>
+        </section>
+    </main>
+
+    <footer>
+        <span id="status-text">Loading stages…</span>
+    </footer>
+
+    <script>
+        const API_BASE = '';
+        const state = {
+            stages: [],
+            currentStage: null,
+            currentDataset: null,
+        };
+
+        async function fetchStages() {
+            try {
+                const response = await fetch(`${API_BASE}/api/stages`);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch stages: ${response.status}`);
+                }
+                const payload = await response.json();
+                state.stages = payload.stages || [];
+                if (state.stages.length === 0) {
+                    updateStatus('No stages configured.');
+                    return;
+                }
+                const defaultStage = state.stages[0];
+                state.currentStage = defaultStage.stage;
+                state.currentDataset = defaultStage.datasets.length ? defaultStage.datasets[0].dataset : null;
+                renderStages();
+                renderDatasets();
+                renderStageMeta();
+                updateStatus('Pick a dataset to view a random example.');
+                await fetchExample();
+            } catch (error) {
+                console.error(error);
+                showError(error.message);
+                updateStatus('Unable to load stages.');
+            }
+        }
+
+        function renderStages() {
+            const container = document.getElementById('stage-list');
+            container.innerHTML = '';
+            state.stages.forEach(stage => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'stage-button' + (stage.stage === state.currentStage ? ' active' : '');
+                button.textContent = stage.label;
+                button.addEventListener('click', () => {
+                    if (state.currentStage !== stage.stage) {
+                        state.currentStage = stage.stage;
+                        state.currentDataset = stage.datasets.length ? stage.datasets[0].dataset : null;
+                        renderStages();
+                        renderDatasets();
+                        renderStageMeta();
+                        fetchExample();
+                    }
+                });
+                container.appendChild(button);
+            });
+        }
+
+        function renderDatasets() {
+            const container = document.getElementById('dataset-list');
+            container.innerHTML = '';
+            const stage = getCurrentStage();
+            if (!stage || !stage.datasets.length) {
+                container.innerHTML = '<div class="empty-state">No datasets available for this stage.</div>';
+                return;
+            }
+            stage.datasets.forEach(dataset => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'dataset-button' + (dataset.dataset === state.currentDataset ? ' active' : '');
+                button.textContent = dataset.label;
+                button.title = dataset.description;
+                button.addEventListener('click', () => {
+                    if (state.currentDataset !== dataset.dataset) {
+                        state.currentDataset = dataset.dataset;
+                        renderDatasets();
+                        fetchExample();
+                    }
+                });
+                container.appendChild(button);
+            });
+        }
+
+        function renderStageMeta() {
+            const container = document.getElementById('stage-meta');
+            container.innerHTML = '';
+            const stage = getCurrentStage();
+            if (!stage) {
+                return;
+            }
+            const fields = [
+                { label: 'Stage', value: stage.label },
+                { label: 'Description', value: stage.description },
+                { label: 'Datasets', value: stage.datasets.map(d => d.label).join(', ') }
+            ];
+            fields.forEach(field => {
+                const item = document.createElement('div');
+                item.className = 'meta-item';
+                const label = document.createElement('div');
+                label.className = 'meta-label';
+                label.textContent = field.label;
+                const value = document.createElement('div');
+                value.className = 'meta-value';
+                value.textContent = field.value || '—';
+                item.appendChild(label);
+                item.appendChild(value);
+                container.appendChild(item);
+            });
+        }
+
+        function getCurrentStage() {
+            return state.stages.find(stage => stage.stage === state.currentStage) || null;
+        }
+
+        async function fetchExample(randomDataset = false) {
+            hideError();
+            const stage = getCurrentStage();
+            if (!stage) {
+                updateStatus('Select a stage to view examples.');
+                return;
+            }
+            let datasetKey = state.currentDataset;
+            if (randomDataset || !datasetKey) {
+                const options = stage.datasets.map(ds => ds.dataset);
+                datasetKey = options[Math.floor(Math.random() * options.length)];
+                state.currentDataset = datasetKey;
+                renderDatasets();
+            }
+            updateStatus('Fetching example…');
+            try {
+                const params = new URLSearchParams({ stage: stage.stage });
+                if (datasetKey) params.append('dataset', datasetKey);
+                const response = await fetch(`${API_BASE}/api/random-example?${params.toString()}`);
+                if (!response.ok) {
+                    const message = await response.text();
+                    throw new Error(message || `Request failed with status ${response.status}`);
+                }
+                const payload = await response.json();
+                renderExample(payload);
+                updateStatus('Showing one random example. Fetch again for more.');
+            } catch (error) {
+                console.error(error);
+                showError(error.message);
+                updateStatus('Unable to fetch example.');
+            }
+        }
+
+        function renderExample(payload) {
+            const container = document.getElementById('example-area');
+            container.innerHTML = '';
+
+            if (!payload || !payload.example) {
+                container.innerHTML = '<div class="empty-state">No example returned.</div>';
+                return;
+            }
+
+            const header = document.createElement('div');
+            header.className = 'meta-grid';
+            const headerItems = [
+                { label: 'Stage', value: payload.stage_label },
+                { label: 'Dataset', value: payload.dataset_label },
+                { label: 'Notes', value: payload.dataset_description }
+            ];
+            headerItems.forEach(item => {
+                const meta = document.createElement('div');
+                meta.className = 'meta-item';
+                const label = document.createElement('div');
+                label.className = 'meta-label';
+                label.textContent = item.label;
+                const value = document.createElement('div');
+                value.className = 'meta-value';
+                value.textContent = item.value || '—';
+                meta.appendChild(label);
+                meta.appendChild(value);
+                header.appendChild(meta);
+            });
+            container.appendChild(header);
+
+            const example = payload.example;
+            if (example.kind === 'text') {
+                const pre = document.createElement('pre');
+                pre.className = 'raw-text';
+                pre.textContent = example.text || '';
+                container.appendChild(pre);
+            } else if (example.kind === 'conversation') {
+                example.messages.forEach(message => {
+                    const block = document.createElement('div');
+                    block.className = 'message ' + (message.role === 'assistant' ? 'assistant' : 'user');
+
+                    const headerRow = document.createElement('div');
+                    headerRow.className = 'message-header';
+                    headerRow.textContent = message.role === 'assistant' ? 'Assistant' : 'User';
+                    block.appendChild(headerRow);
+
+                    const body = document.createElement('div');
+                    body.className = 'message-content';
+
+                    message.parts.forEach(part => {
+                        if (part.type === 'python') {
+                            const code = document.createElement('div');
+                            code.className = 'code-block';
+                            code.textContent = part.text;
+                            body.appendChild(code);
+                        } else if (part.type === 'python_output') {
+                            const code = document.createElement('div');
+                            code.className = 'code-block';
+                            code.style.background = '#0f172a';
+                            code.style.color = '#38bdf8';
+                            code.textContent = part.text;
+                            body.appendChild(code);
+                        } else {
+                            const span = document.createElement('div');
+                            span.textContent = part.text;
+                            body.appendChild(span);
+                        }
+                    });
+
+                    block.appendChild(body);
+                    container.appendChild(block);
+                });
+            }
+
+            if (example.metadata && Object.keys(example.metadata).length) {
+                const metaWrapper = document.createElement('div');
+                metaWrapper.className = 'meta-grid';
+                Object.entries(example.metadata).forEach(([key, value]) => {
+                    const card = document.createElement('div');
+                    card.className = 'meta-item';
+                    const label = document.createElement('div');
+                    label.className = 'meta-label';
+                    label.textContent = key.replace(/_/g, ' ');
+                    const content = document.createElement('div');
+                    content.className = 'meta-value';
+                    content.textContent = formatValue(value);
+                    card.appendChild(label);
+                    card.appendChild(content);
+                    metaWrapper.appendChild(card);
+                });
+                container.appendChild(metaWrapper);
+            }
+        }
+
+        function formatValue(value) {
+            if (Array.isArray(value)) {
+                return value.join(', ');
+            }
+            if (value && typeof value === 'object') {
+                try {
+                    return JSON.stringify(value);
+                } catch (error) {
+                    return String(value);
+                }
+            }
+            return value === null || value === undefined ? '—' : String(value);
+        }
+
+        function showError(message) {
+            const banner = document.getElementById('error-banner');
+            banner.style.display = 'block';
+            banner.textContent = message;
+        }
+
+        function hideError() {
+            const banner = document.getElementById('error-banner');
+            banner.style.display = 'none';
+            banner.textContent = '';
+        }
+
+        function updateStatus(text) {
+            const status = document.getElementById('status-text');
+            status.textContent = text;
+        }
+
+        document.getElementById('random-button').addEventListener('click', () => fetchExample(true));
+
+        fetchStages();
+    </script>
+</body>
+</html>
