@@ -22,7 +22,25 @@ from nanochat.checkpoint_manager import save_checkpoint
 from nanochat.loss_eval import evaluate_bpb
 from nanochat.engine import Engine
 from scripts.base_eval import evaluate_model
-print_banner()
+from torch.profiler import profile, ProfilerActivity, schedule, tensorboard_trace_handler
+
+def get_profiler_context():
+    activities = [ProfilerActivity.CPU, ProfilerActivity.CUDA]
+    profiler_context = profile(
+        activities=activities,
+        record_shapes=False,
+        profile_memory=False,
+        with_stack=True,
+        with_flops=False,
+    )
+    return profiler_context
+
+profiler = None
+if os.environ.get('NANOCHAT_PROFILE', '0').lower() in ["1", 'true']:
+    print0('using profiler')
+    profiler = get_profiler_context()
+
+#print_banner()
 
 # -----------------------------------------------------------------------------
 # User settings
@@ -276,6 +294,14 @@ for step in range(num_iterations + 1):
         opt.step()
     model.zero_grad(set_to_none=True)
     torch.cuda.synchronize()
+
+    if profiler:
+        if step == 3:
+            profiler.start()
+        if step == 10:
+            profiler.stop()
+            profiler.export_chrome_trace('profile.json.gz')
+            profiler = None
     t1 = time.time()
     dt = t1 - t0
     # -------------------------------------------------------------------------
