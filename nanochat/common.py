@@ -43,6 +43,7 @@ def setup_default_logging():
         level=logging.INFO,
         handlers=[handler]
     )
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
 setup_default_logging()
 logger = logging.getLogger(__name__)
