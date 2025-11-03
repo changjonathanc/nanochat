@@ -164,7 +164,10 @@ def compute_init(device_type="cuda"): # cuda|cpu|mps
 
     # Precision
     if device_type == "cuda":
-        torch.set_float32_matmul_precision("high") # uses tf32 instead of fp32 for matmuls
+        if hasattr(torch.backends.cuda.matmul, "fp32_precision"):  # PyTorch >= 2.9
+            torch.backends.cuda.matmul.fp32_precision = "tf32"
+        else:        # PyTorch >= 1.12
+            torch.set_float32_matmul_precision("high")
 
     # Distributed setup: Distributed Data Parallel (DDP), optional, and requires CUDA
     ddp, ddp_rank, ddp_local_rank, ddp_world_size = get_dist_info()
