@@ -72,6 +72,16 @@ Total wall clock time: 3h51m
 
 (Your table might be missing the RL number by default). For a lot more information around the speedrun script and what to look for and expect, please refer to the walkthrough that I posted in Discussions of the repo: ["Introducing nanochat: The best ChatGPT that $100 can buy"](https://github.com/karpathy/nanochat/discussions/1).
 
+### Exporting artifacts
+
+All intermediate files default to `~/.cache/nanochat` (you can override this by setting `NANOCHAT_BASE_DIR` before launching `speedrun.sh`). To archive the results of a run before tearing down a cloud instance, package everything except the large reusable dataset shards:
+
+```bash
+tar --exclude='base_data' -czf nanochat_artifacts_$(date +%Y%m%d).tgz -C ~/.cache nanochat
+```
+
+The tarball keeps checkpoints, tokenizer outputs, reports, and logs while skipping the downloaded shards. Copy the resulting `nanochat_artifacts_*.tgz` off the machine (e.g. with `scp` or `rsync`) and extract it wherever you plan to store or inspect the run.
+
 ## Bigger models
 
 Unsurprisingly, $100 is not enough to train a highly performant ChatGPT clone. In fact, LLMs are famous for their multi-million dollar capex. For our purposes, I think there are two more scales of interest. First is the ~$300 tier d26 model (i.e. depth=26) that trains in ~12 hours, which slightly outperforms GPT-2 CORE score. Second is the $1000 tier (~41.6 hours), just because it's a nice round number. But both of these are not yet fully supported and therefore not attached here in the master branch yet.
