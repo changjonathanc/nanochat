@@ -19,9 +19,64 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from torch.nn.attention.flex_attention import flex_attention, create_block_mask, BlockMask
+flex_attention = torch.compile(flex_attention, dynamic=False, fullgraph=True)
+
 from nanochat.common import get_dist_info, print0
 from nanochat.muon import Muon, DistMuon
 from nanochat.adamw import DistAdamW
+
+
+def create_blockmasks(bos_token_id, input_seq, sliding_window):
+    # copied & modified from modded-nanogpt
+
+    # sliding window is set to the max sequence length
+    # this is because the original nanochat doesn't do packing and examples are concatednated and chunked
+    # we don't modify the data loader, and instead reshape the batches to B=1, and calculate the document boundaries
+    # NOTE: this creates slight difference with gradient accumulation
+    assert input_seq.ndim == 2, f"Input sequence must be 2D: {input_seq.shape=}"
+    assert input_seq.size(0) == 1, f"Input sequence must have batch dimension 1: {input_seq.shape=}"
+    input_seq = input_seq.view(-1)
+    BLOCK_SIZE = 128
+    sliding_window_num_blocks = sliding_window // BLOCK_SIZE
+    docs = (input_seq == bos_token_id).cumsum(0)
+
+    def document_causal(b, h, q_idx, kv_idx):
+        causal_mask = q_idx >= kv_idx
+        document_mask = docs[q_idx] == docs[kv_idx]
+        return causal_mask & document_mask
+
+    def dense_to_ordered(dense_blockmask):
+        num_blocks = dense_blockmask.sum(dim=-1, dtype=torch.int32)
+        indices = dense_blockmask.argsort(dim=-1, descending=False, stable=True).flip(-1).to(torch.int32)
+        return num_blocks[None, None].contiguous(), indices[None, None].contiguous()
+
+    # manual block mask creation by @YouJiacheng
+    assert len(input_seq) % BLOCK_SIZE == 0, f"Input sequence length must be divisible by BLOCK_SIZE: {len(input_seq)=} % {BLOCK_SIZE=} != 0"
+    NUM_BLOCKS = len(input_seq) // BLOCK_SIZE
+    block_idx = torch.arange(NUM_BLOCKS, dtype=torch.int32, device="cuda")
+    causal_blockmask_any = block_idx[:, None] >= block_idx
+    causal_blockmask_all = block_idx[:, None] > block_idx
+    docs_low = docs.view(-1, BLOCK_SIZE)[:, 0].contiguous()
+    docs_high = docs.view(-1, BLOCK_SIZE)[:, -1].contiguous()
+    document_blockmask_any = (docs_low[:, None] <= docs_high) & (docs_high[:, None] >= docs_low)
+    document_blockmask_all = (docs_low[:, None] == docs_high) & (docs_high[:, None] == docs_low)
+    blockmask_any = causal_blockmask_any & document_blockmask_any
+    blockmask_all = causal_blockmask_all & document_blockmask_all
+    partial_kv_num_blocks, partial_kv_indices = dense_to_ordered(blockmask_any & ~blockmask_all)
+    full_kv_num_blocks, full_kv_indices = dense_to_ordered(blockmask_all)
+    def build_bm(window_size_blocks):
+        return BlockMask.from_kv_blocks(
+            torch.clamp_max(partial_kv_num_blocks, torch.clamp_min(window_size_blocks - full_kv_num_blocks, 1)),
+            partial_kv_indices,
+            torch.clamp_max(full_kv_num_blocks, window_size_blocks - 1),
+            full_kv_indices,
+            BLOCK_SIZE=BLOCK_SIZE,
+            mask_mod=document_causal,
+        )
+    # Long-short SWA block masks by @leloykun & @YouJiacheng, adapated from suggestion by @Grad62304977, following Gemma 2 paper
+    return build_bm(sliding_window_num_blocks)
+
 
 @dataclass
 class GPTConfig:
@@ -63,7 +118,7 @@ class CausalSelfAttention(nn.Module):
         self.c_v = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
         self.c_proj = nn.Linear(self.n_embd, self.n_embd, bias=False)
 
-    def forward(self, x, cos_sin, kv_cache):
+    def forward(self, x, cos_sin, kv_cache, block_mask=None):
         B, T, C = x.size()
 
         # Project the input to get queries, keys, and values
@@ -88,7 +143,11 @@ class CausalSelfAttention(nn.Module):
         if kv_cache is None or Tq == Tk:
             # During training (no KV cache), attend as usual with causal attention
             # And even if there is KV cache, we can still use this simple version when Tq == Tk
-            y = F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=enable_gqa)
+            if block_mask is not None:
+                # currently only support flex attention during training
+                y = flex_attention(q, k, v, block_mask=block_mask)
+            else:
+                y = F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=enable_gqa)
         elif Tq == 1:
             # During inference but with a single query in this forward pass:
             # The query has to attend to all the keys/values in the cache
@@ -129,8 +188,8 @@ class Block(nn.Module):
         self.attn = CausalSelfAttention(config, layer_idx)
         self.mlp = MLP(config)
 
-    def forward(self, x, cos_sin, kv_cache):
-        x = x + self.attn(norm(x), cos_sin, kv_cache)
+    def forward(self, x, cos_sin, kv_cache, block_mask=None):
+        x = x + self.attn(norm(x), cos_sin, kv_cache, block_mask=block_mask)
         x = x + self.mlp(norm(x))
         return x
 
@@ -241,7 +300,7 @@ class GPT(nn.Module):
                 group["initial_lr"] = group["lr"]
         return optimizers
 
-    def forward(self, idx, targets=None, kv_cache=None, loss_reduction='mean'):
+    def forward(self, idx, targets=None, kv_cache=None, loss_reduction='mean', block_mask=None):
         B, T = idx.size()
 
         # Grab the rotary embeddings for the current sequence length (they are of shape (1, seq_len, 1, head_dim))
@@ -256,7 +315,7 @@ class GPT(nn.Module):
         x = self.transformer.wte(idx)
         x = norm(x)
         for block in self.transformer.h:
-            x = block(x, cos_sin, kv_cache)
+            x = block(x, cos_sin, kv_cache, block_mask=block_mask)
         x = norm(x)
 
         # Forward the lm_head (compute logits)

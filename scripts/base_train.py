@@ -19,7 +19,7 @@ from contextlib import nullcontext
 import wandb
 import torch
 
-from nanochat.gpt import GPT, GPTConfig
+from nanochat.gpt import GPT, GPTConfig, create_blockmasks
 from nanochat.dataloader import tokenizing_distributed_data_loader
 from nanochat.common import compute_init, compute_cleanup, print0, DummyWandb, print_banner, get_base_dir, autodetect_device_type
 from nanochat.tokenizer import get_tokenizer, get_token_bytes
@@ -45,6 +45,8 @@ if os.environ.get('NANOCHAT_PROFILE', '0').lower() in ["1", 'true']:
     print0('using profiler')
     profiler = get_profiler_context()
 
+NOCOMPILE = os.environ.get('NANOCHAT_NOCOMPILE', '0').lower() in ["1", 'true']
+SKIP_FIRST_EVAL = os.environ.get('NANOCHAT_SKIP_FIRST_EVAL', '0').lower() in ["1", 'true']
 #print_banner()
 
 # -----------------------------------------------------------------------------
@@ -98,6 +100,7 @@ wandb_run = DummyWandb() if use_dummy_wandb else wandb.init(project="nanochat", 
 
 # Tokenizer will be useful for evaluation, also we need the vocab size
 tokenizer = get_tokenizer()
+bos_token = tokenizer.get_bos_token_id()
 token_bytes = get_token_bytes(device=device)
 vocab_size = tokenizer.get_vocab_size()
 print0(f"Vocab size: {vocab_size:,}")
@@ -130,7 +133,8 @@ with torch.device("meta"):
 model.to_empty(device=device)
 model.init_weights()
 orig_model = model # original, uncompiled model, for saving raw model state_dict
-model = torch.compile(model, dynamic=False) # TODO: dynamic True/False think through
+if not NOCOMPILE:
+    model = torch.compile(model, dynamic=False) # TODO: dynamic True/False think through
 num_params = sum(p.numel() for p in model.parameters())
 print0(f"Number of parameters: {num_params:,}")
 num_flops_per_token = model.estimate_flops()
@@ -201,7 +205,7 @@ for step in range(num_iterations + 1):
     flops_so_far = num_flops_per_token * total_batch_size * step
 
     # once in a while: evaluate the val bpb (all ranks participate)
-    if last_step or step % eval_every == 0:
+    if (last_step or step % eval_every == 0) and not (SKIP_FIRST_EVAL and step == 0):
         model.eval()
         val_loader = build_val_loader()
         eval_steps = eval_tokens // (device_batch_size * max_seq_len * ddp_world_size)
@@ -284,7 +288,10 @@ for step in range(num_iterations + 1):
     t0 = time.time()
     for micro_step in range(grad_accum_steps):
         with autocast_ctx:
-            loss = model(x, y)
+            x = x.view(1, -1)
+            y = y.view(1, -1)
+            block_mask = create_blockmasks(bos_token, x, sliding_window=max_seq_len)
+            loss = model(x, y, block_mask=block_mask)
         train_loss = loss.detach() # for logging
         loss = loss / grad_accum_steps # each .backward() is a grad sum => normalize loss here
         loss.backward()
