@@ -189,7 +189,7 @@ for step in range(num_iterations):
         wandb_run.log({
             "step": step,
             "val_loss": val_loss,
-        })
+        }, step=step)
         model.train()
 
     # evlauate accuracy of the multiple choice tasks (which are quick to run)
@@ -205,7 +205,7 @@ for step in range(num_iterations):
         wandb_run.log({
             "step": step,
             **metrics,
-        })
+        }, step=step)
         model.train()
 
     if last_step:
@@ -244,7 +244,7 @@ for step in range(num_iterations):
         "lrm": lrm,
         "train_loss": train_loss_item,
         "num_tokens": num_tokens_item,
-    })
+    }, step=step)
     step += 1
 
 # Save the model at the end of the run

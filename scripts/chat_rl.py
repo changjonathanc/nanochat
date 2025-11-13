@@ -236,7 +236,7 @@ for step in range(num_steps):
         wandb_run.log({
             "step": step,
             **log_passk,
-        })
+        }, step=step)
 
     # Forward/Backward on rollouts over multiple examples in the dataset
     rewards_list = []
@@ -288,7 +288,7 @@ for step in range(num_steps):
         "step": step,
         "reward": mean_reward,
         "sequence_length": mean_sequence_length,
-    })
+    }, step=step)
 
     # Update the model parameters
     lrm = get_lr_multiplier(step)
@@ -301,7 +301,7 @@ for step in range(num_steps):
     wandb_run.log({
         "step": step,
         "lrm": lrm,
-    })
+    }, step=step)
 
     # Master process saves the model once in a while. Skip first step. Save last step.
     if master_process and ((step > 0 and step % save_every == 0) or step == num_steps - 1):

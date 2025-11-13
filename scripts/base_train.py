@@ -215,7 +215,7 @@ for step in range(num_iterations + 1):
             "total_training_flops": flops_so_far,
             "total_training_time": total_training_time,
             "val/bpb": val_bpb,
-        })
+        }, step=step)
         model.train()
 
     # once in a while: estimate the CORE metric (all ranks participate)
@@ -231,7 +231,7 @@ for step in range(num_iterations + 1):
             "total_training_flops": flops_so_far,
             "core_metric": results["core_metric"],
             "centered_results": results["centered_results"],
-        })
+        }, step=step)
         model.train()
 
     # once in a while: sample from the model (only on master process)
@@ -337,7 +337,7 @@ for step in range(num_iterations + 1):
             "train/dt": dt,
             "train/tok_per_sec": tok_per_sec,
             "train/mfu": mfu,
-        })
+        }, step=step)
 
 # print a few more stats
 print0(f"Peak memory usage: {get_max_memory() / 1024 / 1024:.2f}MiB")

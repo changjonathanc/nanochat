@@ -202,7 +202,7 @@ while True:
             "total_training_flops": flops_so_far,
             "total_training_time": total_training_time,
             "val/bpb": val_bpb,
-        })
+        }, step=step)
         model.train()
 
     # save checkpoint at the end of the run (only on master process)
@@ -285,7 +285,7 @@ while True:
             "train/dt": dt,
             "train/tok_per_sec": tok_per_sec,
             "train/mfu": mfu,
-        })
+        }, step=step)
 
 # print a few more stats
 print0(f"Peak memory usage: {get_max_memory() / 1024 / 1024:.2f}MiB")
