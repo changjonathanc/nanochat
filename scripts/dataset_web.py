@@ -8,8 +8,8 @@ python -m scripts.dataset_web
 """
 
 import argparse
-import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
@@ -45,8 +45,8 @@ app.add_middleware(
 @app.get("/")
 async def root():
     """Serve the dataset viewer UI."""
-    ui_path = os.path.join("nanochat", "dataset_ui.html")
-    with open(ui_path, "r", encoding="utf-8") as handle:
+    ui_path = Path("nanochat") / "dataset_ui.html"
+    with ui_path.open("r", encoding="utf-8") as handle:
         html = handle.read()
     return HTMLResponse(content=html)
 
@@ -54,7 +54,7 @@ async def root():
 @app.get("/logo.svg")
 async def logo():
     """Serve the NanoChat logo for reuse in the viewer."""
-    logo_path = os.path.join("nanochat", "logo.svg")
+    logo_path = Path("nanochat") / "logo.svg"
     return FileResponse(logo_path, media_type="image/svg+xml")
 
 

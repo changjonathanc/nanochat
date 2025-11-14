@@ -16,6 +16,7 @@ import time
 import wandb
 import torch
 from contextlib import nullcontext
+from pathlib import Path
 from nanochat.common import compute_init, compute_cleanup, print0, DummyWandb, get_base_dir, autodetect_device_type
 from nanochat.tokenizer import get_token_bytes
 from nanochat.checkpoint_manager import save_checkpoint
@@ -49,7 +50,8 @@ eval_tokens = 20*524288
 total_batch_size = 524288
 dry_run = 0 # dry_run=1 is for experiments: we will log to wandb but we won't write checkpoints or report
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
-exec(open(os.path.join('nanochat', 'configurator.py')).read()) # overrides from command line or config file
+config_path = Path('nanochat') / 'configurator.py'
+exec(config_path.read_text()) # overrides from command line or config file
 user_config = {k: globals()[k] for k in config_keys} # possibly useful for logging
 # -----------------------------------------------------------------------------
 
@@ -94,7 +96,7 @@ for opt in optimizers:
 
 # Midtraining data mixture and DataLoader
 base_dir = get_base_dir()
-identity_conversations_filepath = os.path.join(base_dir, "identity_conversations.jsonl")
+identity_conversations_filepath = base_dir / "identity_conversations.jsonl"
 train_dataset = TaskMixture([
     SmolTalk(split="train"), # 460K rows of general conversations
     MMLU(subset="auxiliary_train", split="train"), # 100K rows of multiple choice problems drawn from ARC, MC_TEST, OBQA, RACE
@@ -208,7 +210,7 @@ while True:
     # save checkpoint at the end of the run (only on master process)
     if master_process and last_step and not dry_run:
         output_dirname = f"d{depth}" # e.g. d12
-        checkpoint_dir = os.path.join(base_dir, "mid_checkpoints", output_dirname)
+        checkpoint_dir = base_dir / "mid_checkpoints" / output_dirname
         save_checkpoint(
             checkpoint_dir,
             step,

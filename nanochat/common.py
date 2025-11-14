@@ -7,6 +7,8 @@ import re
 import logging
 import fcntl
 import urllib.request
+from pathlib import Path
+
 import torch
 import torch.distributed as dist
 
@@ -49,14 +51,13 @@ setup_default_logging()
 logger = logging.getLogger(__name__)
 
 def get_base_dir():
-    # co-locate nanochat intermediates with other cached data in ~/.cache (by default)
-    if os.environ.get("NANOCHAT_BASE_DIR"):
-        nanochat_dir = os.environ.get("NANOCHAT_BASE_DIR")
+    """Return the root cache directory for nanochat assets as a pathlib.Path."""
+    env_dir = os.environ.get("NANOCHAT_BASE_DIR")
+    if env_dir:
+        nanochat_dir = Path(env_dir).expanduser()
     else:
-        home_dir = os.path.expanduser("~")
-        cache_dir = os.path.join(home_dir, ".cache")
-        nanochat_dir = os.path.join(cache_dir, "nanochat")
-    os.makedirs(nanochat_dir, exist_ok=True)
+        nanochat_dir = Path.home() / ".cache" / "nanochat"
+    nanochat_dir.mkdir(parents=True, exist_ok=True)
     return nanochat_dir
 
 def download_file_with_lock(url, filename, postprocess_fn=None):
@@ -65,20 +66,20 @@ def download_file_with_lock(url, filename, postprocess_fn=None):
     Uses a lock file to prevent concurrent downloads among multiple ranks.
     """
     base_dir = get_base_dir()
-    file_path = os.path.join(base_dir, filename)
-    lock_path = file_path + ".lock"
+    file_path = base_dir / filename
+    lock_path = file_path.with_name(file_path.name + ".lock")
 
-    if os.path.exists(file_path):
+    if file_path.exists():
         return file_path
 
-    with open(lock_path, 'w') as lock_file:
+    with lock_path.open('w') as lock_file:
 
         # Only a single rank can acquire this lock
         # All other ranks block until it is released
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
 
         # Recheck after acquiring lock (another process may have downloaded it)
-        if os.path.exists(file_path):
+        if file_path.exists():
             return file_path
 
         # Download the content as bytes
@@ -87,7 +88,7 @@ def download_file_with_lock(url, filename, postprocess_fn=None):
             content = response.read() # bytes
 
         # Write to local file
-        with open(file_path, 'wb') as f:
+        with file_path.open('wb') as f:
             f.write(content)
         print(f"Downloaded to {file_path}")
 
@@ -97,8 +98,8 @@ def download_file_with_lock(url, filename, postprocess_fn=None):
 
     # Clean up the lock file after the lock is released
     try:
-        os.remove(lock_path)
-    except OSError:
+        lock_path.unlink()
+    except FileNotFoundError:
         pass  # Ignore if already removed by another process
 
     return file_path

@@ -15,6 +15,7 @@ dataset preparation and it is not used during the project runtime.
 """
 import os
 import time
+from pathlib import Path
 
 from datasets import load_dataset
 import pyarrow.parquet as pq
@@ -34,8 +35,8 @@ ndocs = len(ds) # total number of documents to process
 print(f"Total number of documents: {ndocs}")
 
 # Repackage into parquet files
-output_dir = "/home/ubuntu/.cache/nanochat/base_data"
-os.makedirs(output_dir, exist_ok=True)
+output_dir = Path("/home/ubuntu/.cache/nanochat/base_data")
+output_dir.mkdir(parents=True, exist_ok=True)
 
 # Write to parquet files
 chars_per_shard = 250_000_000
@@ -53,7 +54,7 @@ for doc in ds:
     collected_enough_chars = shard_characters >= chars_per_shard
     docs_multiple_of_row_group_size = len(shard_docs) % row_group_size == 0
     if collected_enough_chars and docs_multiple_of_row_group_size: # leads to ~100MB of text (compressed)
-        shard_path = os.path.join(output_dir, f"shard_{shard_index:05d}.parquet")
+        shard_path = output_dir / f"shard_{shard_index:05d}.parquet"
         shard_table = pa.Table.from_pydict({"text": shard_docs})
         pq.write_table(
             shard_table,

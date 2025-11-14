@@ -15,6 +15,7 @@ import os
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import time
 from contextlib import nullcontext
+from pathlib import Path
 
 import wandb
 import torch
@@ -78,11 +79,13 @@ eval_tokens = 20*524288 # number of tokens to evaluate val loss on
 core_metric_every = 2000 # every how many steps to evaluate the core metric (-1 = disable)
 core_metric_max_per_task = 500 # examples per task in estimating the core metric
 sample_every = 2000 # every how many steps to sample from the model
+
 # Output
 model_tag = "" # optionally override the model tag for the output checkpoint directory name
 # now allow CLI to override the settings via the configurator lol
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
-exec(open(os.path.join('nanochat', 'configurator.py')).read()) # overrides from command line or config file
+config_path = Path('nanochat') / 'configurator.py'
+exec(config_path.read_text()) # overrides from command line or config file
 user_config = {k: globals()[k] for k in config_keys} # will be useful for logging
 # -----------------------------------------------------------------------------
 
@@ -167,7 +170,7 @@ adamw_optimizer, muon_optimizer = optimizers
 
 # Initialize the DataLoaders for train/val
 base_dir = get_base_dir()
-tokens_dir = os.path.join(base_dir, "tokenized_data")
+tokens_dir = base_dir / "tokenized_data"
 train_loader = tokenizing_distributed_data_loader(device_batch_size, max_seq_len, split="train", device=device)
 build_val_loader = lambda: tokenizing_distributed_data_loader(device_batch_size, max_seq_len, split="val", device=device)
 x, y = next(train_loader) # kick off load of the very first batch of data
@@ -262,7 +265,7 @@ for step in range(num_iterations + 1):
     # save checkpoint at the end of the run (only on master process)
     if master_process and last_step:
         output_dirname = model_tag if model_tag else f"d{depth}" # e.g. d12
-        checkpoint_dir = os.path.join(base_dir, "base_checkpoints", output_dirname)
+        checkpoint_dir = base_dir / "base_checkpoints" / output_dirname
         save_checkpoint(
             checkpoint_dir,
             step,

@@ -9,7 +9,6 @@ torchrun --nproc_per_node=8 -m scripts.base_eval
 
 The script will print the CORE metric to the console.
 """
-import os
 import csv
 import time
 import json
@@ -19,6 +18,7 @@ import random
 import zipfile
 import tempfile
 from contextlib import nullcontext
+from pathlib import Path
 
 import torch
 
@@ -37,11 +37,12 @@ def place_eval_bundle(file_path):
     # here file_path is the path to the eval_bundle.zip file
     # we need to unzip it and place it in the base directory
     base_dir = get_base_dir()
-    eval_bundle_dir = os.path.join(base_dir, "eval_bundle")
+    eval_bundle_dir = base_dir / "eval_bundle"
     with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
         with zipfile.ZipFile(file_path, 'r') as zip_ref:
-            zip_ref.extractall(tmpdir)
-        extracted_bundle_dir = os.path.join(tmpdir, "eval_bundle")
+            zip_ref.extractall(tmp_path)
+        extracted_bundle_dir = tmp_path / "eval_bundle"
         shutil.move(extracted_bundle_dir, eval_bundle_dir)
     print0(f"Placed eval_bundle directory at {eval_bundle_dir}")
 
@@ -52,13 +53,13 @@ def evaluate_model(model, tokenizer, device, max_per_task=-1):
     """
     # Load config and task metadata
     base_dir = get_base_dir()
-    eval_bundle_dir = os.path.join(base_dir, "eval_bundle")
+    eval_bundle_dir = base_dir / "eval_bundle"
     # Download the eval bundle to disk (and unzip if needed)
-    if not os.path.exists(eval_bundle_dir):
+    if not eval_bundle_dir.exists():
         download_file_with_lock(EVAL_BUNDLE_URL, "eval_bundle.zip", postprocess_fn=place_eval_bundle)
-    config_path = os.path.join(eval_bundle_dir, "core.yaml")
-    data_base_path = os.path.join(eval_bundle_dir, "eval_data")
-    eval_meta_data = os.path.join(eval_bundle_dir, "eval_meta_data.csv")
+    config_path = eval_bundle_dir / "core.yaml"
+    data_base_path = eval_bundle_dir / "eval_data"
+    eval_meta_data = eval_bundle_dir / "eval_meta_data.csv"
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
     tasks = config['icl_tasks']
@@ -87,7 +88,7 @@ def evaluate_model(model, tokenizer, device, max_per_task=-1):
         print0(f"Evaluating: {label} ({task_meta['num_fewshot']}-shot, type: {task_meta['task_type']})... ", end='')
 
         # Load data for this task
-        data_path = os.path.join(data_base_path, task_meta['dataset_uri'])
+        data_path = data_base_path / task_meta['dataset_uri']
         with open(data_path, 'r') as f:
             data = [json.loads(line.strip()) for line in f]
 
@@ -179,8 +180,8 @@ def main():
     centered_results = {}
     if ddp_rank == 0:
         base_dir = get_base_dir()
-        output_csv_path = os.path.join(base_dir, "base_eval", f"{model_slug}.csv")
-        os.makedirs(os.path.dirname(output_csv_path), exist_ok=True)
+        output_csv_path = base_dir / "base_eval" / f"{model_slug}.csv"
+        output_csv_path.parent.mkdir(parents=True, exist_ok=True)
         results = out["results"]
         centered_results = out["centered_results"]
         core_metric = out["core_metric"]

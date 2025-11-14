@@ -9,6 +9,7 @@ import os
 import random
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 import pyarrow.parquet as pq
@@ -129,12 +130,12 @@ class _BaseShardSampler:
                 self._ensure_paths()
             paths = self._parquet_paths
         if not paths:
-            data_dir = os.path.join(get_base_dir(), "base_data")
+            data_dir = get_base_dir() / "base_data"
             raise DataUnavailable(
                 f"No parquet shards found in {data_dir}. Download base data before viewing examples."
             )
 
-        shard_path = rng.choice(paths)
+        shard_path = Path(rng.choice(paths))
         parquet = pq.ParquetFile(shard_path)
         num_row_groups = parquet.num_row_groups
         if num_row_groups == 0:
@@ -153,7 +154,7 @@ class _BaseShardSampler:
             "kind": "text",
             "text": text,
             "metadata": {
-                "file": os.path.basename(shard_path),
+                "file": shard_path.name,
                 "row_group": row_group_index,
                 "row": row_index,
             },
