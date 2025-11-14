@@ -1042,6 +1042,7 @@ dependencies = [
     { name = "files-to-prompt" },
     { name = "hf-transfer" },
     { name = "numpy" },
+    { name = "pre-commit" },
     { name = "psutil" },
     { name = "regex" },
     { name = "setuptools" },
@@ -1067,7 +1068,6 @@ gpu = [
 [package.dev-dependencies]
 dev = [
     { name = "maturin" },
-    { name = "pre-commit" },
     { name = "pytest" },
 ]
 
@@ -1078,6 +1078,7 @@ requires-dist = [
     { name = "files-to-prompt", specifier = ">=0.6" },
     { name = "hf-transfer", specifier = ">=0.1.9" },
     { name = "numpy", specifier = "==1.26.4" },
+    { name = "pre-commit", specifier = ">=4.4.0" },
     { name = "psutil", specifier = ">=7.1.0" },
     { name = "regex", specifier = ">=2025.9.1" },
     { name = "setuptools", specifier = ">=80.9.0" },
@@ -1094,7 +1095,6 @@ provides-extras = ["cpu", "gpu"]
 [package.metadata.requires-dev]
 dev = [
     { name = "maturin", specifier = ">=1.9.4" },
-    { name = "pre-commit", specifier = ">=4.4.0" },
     { name = "pytest", specifier = ">=8.0.0" },
 ]
 

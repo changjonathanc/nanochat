@@ -10,6 +10,7 @@ dependencies = [
     "files-to-prompt>=0.6",
     "hf-transfer>=0.1.9",
     "numpy==1.26.4",
+    "pre-commit>=4.4.0",
     "psutil>=7.1.0",
     "regex>=2025.9.1",
     "setuptools>=80.9.0",
@@ -33,7 +34,6 @@ manifest-path = "rustbpe/Cargo.toml"
 [dependency-groups]
 dev = [
     "maturin>=1.9.4",
-    "pre-commit>=4.4.0",
     "pytest>=8.0.0",
 ]
 
