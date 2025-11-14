@@ -346,4 +346,3 @@ def execute_code(
         timeout=result_dict["timeout"],
         memory_exceeded=result_dict["memory_exceeded"],
     )
-

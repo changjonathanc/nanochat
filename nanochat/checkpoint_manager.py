@@ -5,6 +5,7 @@ import os
 import re
 import json
 import logging
+import shutil
 from pathlib import Path
 
 import torch
@@ -20,6 +21,32 @@ logger = logging.getLogger(__name__)
 def log0(message):
     if int(os.environ.get('RANK', 0)) == 0:
         logger.info(message)
+
+def save_intermediate_checkpoint(checkpoint_dir, step, model_data, optimizer_data, meta_data, keep_last_n=1):
+    # a wrapper around save_checkpoint that keeps the last n checkpoints
+    # unlike save_checkpoint, we keep each step's checkpoint in a separate directory
+    # d12/step_1000/model_1000.pt, optim_1000.pt, meta_1000.json
+    # d12/step_2000/model_1001.pt, optim_1001.pt, meta_1001.json
+    checkpoint_dir = Path(checkpoint_dir)
+    # save the current one
+    save_checkpoint(checkpoint_dir / f"step_{step}", step, model_data, optimizer_data, meta_data)
+    # delete the oldest one if we have more than keep_last_n
+    checkpoints = list(checkpoint_dir.glob("step_*"))
+    checkpoints.sort(key=lambda x: int(x.stem.split("_")[-1]))
+    if len(checkpoints) > keep_last_n:
+        for checkpoint in checkpoints[:-keep_last_n]:
+            shutil.rmtree(checkpoint)
+            log0(f"Deleted old checkpoint: {checkpoint}")
+def load_latest_intermediate_checkpoint(checkpoint_dir, device, load_optimizer):
+    checkpoint_dir = Path(checkpoint_dir)
+    if not checkpoint_dir.exists():
+        return None
+    checkpoints = list(checkpoint_dir.glob("step_*"))
+    checkpoints.sort(key=lambda x: int(x.stem.split("_")[-1]))
+    if not checkpoints:
+        return None
+    step = int(checkpoints[-1].stem.split("_")[-1])
+    return load_checkpoint(checkpoints[-1], step=step, device=device, load_optimizer=load_optimizer)
 
 def save_checkpoint(checkpoint_dir, step, model_data, optimizer_data, meta_data):
     assert int(os.environ.get('RANK', 0)) == 0 # prevent footguns for now

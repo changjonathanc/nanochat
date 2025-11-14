@@ -24,7 +24,7 @@ from nanochat.gpt import GPT, GPTConfig, create_blockmasks
 from nanochat.dataloader import tokenizing_distributed_data_loader
 from nanochat.common import compute_init, compute_cleanup, print0, DummyWandb, print_banner, get_base_dir, autodetect_device_type
 from nanochat.tokenizer import get_tokenizer, get_token_bytes
-from nanochat.checkpoint_manager import save_checkpoint
+from nanochat.checkpoint_manager import save_checkpoint, save_intermediate_checkpoint, load_latest_intermediate_checkpoint
 from nanochat.loss_eval import evaluate_bpb
 from nanochat.engine import Engine
 from scripts.base_eval import evaluate_model
@@ -79,6 +79,7 @@ eval_tokens = 20*524288 # number of tokens to evaluate val loss on
 core_metric_every = 2000 # every how many steps to evaluate the core metric (-1 = disable)
 core_metric_max_per_task = 500 # examples per task in estimating the core metric
 sample_every = 2000 # every how many steps to sample from the model
+checkpoint_every = 2000 # every how many steps to save the checkpoint
 
 # Output
 model_tag = "" # optionally override the model tag for the output checkpoint directory name
@@ -196,6 +197,18 @@ def get_muon_momentum(it):
     momentum = (1 - frac) * 0.85 + frac * 0.95
     return momentum
 
+
+# attempt to load the latest intermediate checkpoint for resuming training
+resume_training_step = 0
+intermediate_checkpoint_dir = base_dir / "base_intermediate_checkpoints" / (model_tag if model_tag else f"d{depth}")
+intermediate_checkpoint = load_latest_intermediate_checkpoint(intermediate_checkpoint_dir, device, load_optimizer=True)
+if intermediate_checkpoint is not None:
+    model_data, optimizer_data, meta_data = intermediate_checkpoint
+    orig_model.load_state_dict(model_data)
+    for opt, state_dict in zip(optimizers, optimizer_data):
+        opt.load_state_dict(state_dict)
+    resume_training_step = meta_data["step"]
+    print0(f"Resuming training from intermediate checkpoint: {resume_training_step=}")
 # -----------------------------------------------------------------------------
 # Training loop
 min_val_bpb = float("inf")
@@ -203,7 +216,9 @@ smooth_train_loss = 0 # EMA of training loss
 ema_beta = 0.9 # EMA decay factor
 total_training_time = 0 # total wall-clock time of training
 # note that we run +1 steps only so that we can eval and save at the end
-for step in range(num_iterations + 1):
+for _ in range(resume_training_step):
+    x, y = next(train_loader) # step the data loader until we reach the resume step
+for step in range(resume_training_step, num_iterations + 1):
     last_step = step == num_iterations
     flops_so_far = num_flops_per_token * total_batch_size * step
 
@@ -324,6 +339,26 @@ for step in range(num_iterations + 1):
             profiler = None
     t1 = time.time()
     dt = t1 - t0
+    # -------------------------------------------------------------------------
+
+    # checkpointing: if we're here, this is not the last step and we're checkpointing
+    if master_process and step % checkpoint_every == 0 and step > 0:
+        output_dirname = model_tag if model_tag else f"d{depth}" # e.g. d12
+        checkpoint_dir = base_dir / "base_intermediate_checkpoints" / output_dirname
+        save_intermediate_checkpoint(
+            checkpoint_dir,
+            step,
+            orig_model.state_dict(),
+            [opt.state_dict() for opt in optimizers], # TODO: make sure saving across ranks is done correctly
+            {
+                "step": step,
+                "val_bpb": val_bpb, # loss at last step
+                "model_config": model_config_kwargs,
+                "user_config": user_config, # inputs to the training script
+                "device_batch_size": device_batch_size,
+                "max_seq_len": max_seq_len,
+            }
+        )
     # -------------------------------------------------------------------------
 
     # logging
