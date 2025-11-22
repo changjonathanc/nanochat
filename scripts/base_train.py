@@ -42,9 +42,7 @@ def get_profiler_context():
     return profiler_context
 
 profiler = None
-if os.environ.get('NANOCHAT_PROFILE', '0').lower() in ["1", 'true']:
-    print0('using profiler')
-    profiler = get_profiler_context()
+USE_PROFILER = os.environ.get('NANOCHAT_PROFILE', '0').lower() in ["1", 'true']
 
 NOCOMPILE = os.environ.get('NANOCHAT_NOCOMPILE', '0').lower() in ["1", 'true']
 SKIP_FIRST_EVAL = os.environ.get('NANOCHAT_SKIP_FIRST_EVAL', '0').lower() in ["1", 'true']
@@ -97,6 +95,11 @@ master_process = ddp_rank == 0 # this process will do logging, checkpointing etc
 autocast_ctx = torch.amp.autocast(device_type=device_type, dtype=torch.bfloat16) if device_type == "cuda" else nullcontext()
 synchronize = torch.cuda.synchronize if device_type == "cuda" else lambda: None
 get_max_memory = torch.cuda.max_memory_allocated if device_type == "cuda" else lambda: 0
+
+# Initialize profiler only on rank 0
+if USE_PROFILER and master_process:
+    print0('using profiler')
+    profiler = get_profiler_context()
 
 # wandb logging init
 use_dummy_wandb = run == "dummy" or not master_process
