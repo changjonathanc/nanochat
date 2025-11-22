@@ -333,7 +333,7 @@ for step in range(resume_training_step, num_iterations + 1):
     if profiler:
         if step == 3:
             profiler.start()
-        if step == 10:
+        if step == 5:
             profiler.stop()
             profiler.export_chrome_trace('profile.json.gz')
             profiler = None
